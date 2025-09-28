@@ -73,3 +73,28 @@ def create_star_schema(unified_df: pd.DataFrame) -> dict:
         "dim_date": df_date, "dim_product": df_product, "dim_region": df_region,
         "dim_channel": df_channel, "fact_sales": df_fact_sales
     }
+
+def create_cloud_cost_df(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Transforms the wide cloud cost comparison chart into a long format for the database.
+    """
+    metric = 'Price (Per Unit)'
+    unit = 'INR'
+
+    df_processed = df.iloc[1:].copy()
+    columns = ['service'] + list(df.columns[1:])
+    df_processed.columns = columns
+    
+    id_vars = ['service']
+    value_vars = [col for col in columns if col != 'service']
+    df_long = pd.melt(df_processed, id_vars=id_vars, value_vars=value_vars,
+                      var_name='provider', value_name='value')
+
+    df_long['metric'] = metric
+    df_long['unit'] = unit
+    
+    df_long['value'] = pd.to_numeric(df_long['value'], errors='coerce')
+    df_long.dropna(subset=['value'], inplace=True)
+    
+    print(f"  - Created DataFrame 'fact_cloud_cost' with {df_long.shape[0]} rows.")
+    return df_long

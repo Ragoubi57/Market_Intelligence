@@ -17,6 +17,25 @@ def clean_for_json(df: pd.DataFrame) -> pd.DataFrame:
     df_copy.replace([np.inf, -np.inf], None, inplace=True)
     return df_copy
 
+def load_simple_fact_table(df: pd.DataFrame, table_name: str, pkey_col: str):
+    """
+    Performs a full refresh (delete and insert) for a simple fact table.
+    """
+    print(f"Performing full refresh for table: {table_name}...")
+    
+    df_to_load = clean_for_json(df)
+    
+    supabase.table(table_name).delete().neq(pkey_col, 'a-value-that-never-exists').execute()
+    
+    response = supabase.table(table_name).insert(
+        df_to_load.to_dict(orient="records")
+    ).execute()
+    
+    if len(response.data) > 0:
+        print(f"Successfully loaded {len(response.data)} rows into {table_name}.")
+    else:
+        print(f"Load operation to {table_name} reported 0 rows loaded. Check Supabase logs.")
+
 def load_star_schema(schema_dfs: dict):
     """Orchestrates the loading of the full star schema into Supabase."""
     print("\n--- Starting Star Schema Load ---")
