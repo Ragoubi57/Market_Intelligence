@@ -1,14 +1,10 @@
 import os
 import pandas as pd
 import numpy as np
-from supabase import create_client, Client
+from supabase import Client
 from dotenv import load_dotenv
 
 load_dotenv()
-
-url: str = os.getenv("SUPABASE_URL")
-key: str = os.getenv("SUPABASE_KEY")
-supabase: Client = create_client(url, key)
 
 def clean_for_json(df: pd.DataFrame) -> pd.DataFrame:
     """Cleans a DataFrame to make it JSON serializable."""
@@ -17,29 +13,20 @@ def clean_for_json(df: pd.DataFrame) -> pd.DataFrame:
     df_copy.replace([np.inf, -np.inf], None, inplace=True)
     return df_copy
 
-def load_simple_fact_table(df: pd.DataFrame, table_name: str, pkey_col: str):
-    """
-    Performs a full refresh (delete and insert) for a simple fact table.
-    """
+def load_simple_fact_table(supabase: Client, df: pd.DataFrame, table_name: str, pkey_col: str):
+    """Performs a full refresh (delete and insert) for a simple fact table."""
     print(f"Performing full refresh for table: {table_name}...")
-    
     df_to_load = clean_for_json(df)
-    
-    supabase.table(table_name).delete().neq(pkey_col, 'a-value-that-never-exists').execute()
-    
-    response = supabase.table(table_name).insert(
-        df_to_load.to_dict(orient="records")
-    ).execute()
-    
+    supabase.table(table_name).delete().neq(pkey_col, 0).execute()
+    response = supabase.table(table_name).insert(df_to_load.to_dict(orient="records")).execute()
     if len(response.data) > 0:
         print(f"Successfully loaded {len(response.data)} rows into {table_name}.")
     else:
-        print(f"Load operation to {table_name} reported 0 rows loaded. Check Supabase logs.")
+        print(f"Load operation to {table_name} reported 0 rows loaded.")
 
-def load_star_schema(schema_dfs: dict):
+def load_star_schema(supabase: Client, schema_dfs: dict):
     """Orchestrates the loading of the full star schema into Supabase."""
     print("\n--- Starting Star Schema Load ---")
-
     print("Loading dimension: dim_date...")
     dim_date_to_load = schema_dfs["dim_date"].copy()
     dim_date_to_load['date'] = dim_date_to_load['date'].dt.strftime('%Y-%m-%d')
@@ -58,7 +45,6 @@ def load_star_schema(schema_dfs: dict):
     supabase.table("dim_channel").upsert(dim_channel_to_load.to_dict(orient="records"), on_conflict="channel_name").execute()
     
     print("Dimensions loaded successfully.")
-
     print("Fetching dimension keys from Supabase for mapping...")
     dates = pd.DataFrame(supabase.table("dim_date").select("date_id, date").execute().data)
     dates['date'] = pd.to_datetime(dates['date']).dt.date
@@ -69,7 +55,6 @@ def load_star_schema(schema_dfs: dict):
     print("Preparing fact_sales table with foreign keys...")
     df_fact_sales = schema_dfs["fact_sales"].copy()
     df_fact_sales['date'] = pd.to_datetime(df_fact_sales['date']).dt.date
-    
     df_fact_sales = pd.merge(df_fact_sales, dates, on="date", how="left")
     df_fact_sales = pd.merge(df_fact_sales, products, on="sku", how="left")
     df_fact_sales = pd.merge(df_fact_sales, regions, on="country", how="left")
@@ -84,7 +69,7 @@ def load_star_schema(schema_dfs: dict):
             final_fact_sales[col] = final_fact_sales[col].astype(int)
 
     if final_fact_sales.empty:
-        print("No valid fact rows to load after merging. Check for mismatches in keys.")
+        print("No valid fact rows to load after merging.")
     else:
         print(f"Loading {final_fact_sales.shape[0]} rows into fact_sales...")
         final_fact_sales_to_load = clean_for_json(final_fact_sales)

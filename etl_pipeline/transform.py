@@ -78,23 +78,49 @@ def create_cloud_cost_df(df: pd.DataFrame) -> pd.DataFrame:
     """
     Transforms the wide cloud cost comparison chart into a long format for the database.
     """
-    metric = 'Price (Per Unit)'
-    unit = 'INR'
-
-    df_processed = df.iloc[1:].copy()
-    columns = ['service'] + list(df.columns[1:])
-    df_processed.columns = columns
+    # The first row contains headers/metrics.
+    metrics = df.iloc[0].values
     
-    id_vars = ['service']
-    value_vars = [col for col in columns if col != 'service']
-    df_long = pd.melt(df_processed, id_vars=id_vars, value_vars=value_vars,
-                      var_name='provider', value_name='value')
-
-    df_long['metric'] = metric
-    df_long['unit'] = unit
+    # The actual data starts from the second row.
+    df_data = df.iloc[1:].copy()
     
+    # Use the first column as our service column, the rest are providers
+    service_col = df.columns[1] # 'Shiprocket' column contains the service names
+    provider_cols = df.columns[2:] # 'Unnamed: 1' and 'INCREFF' are the provider costs
+    
+    # Rename columns explicitly for clarity before melting
+    # The service name is in the 'Shiprocket' column in the source file
+    df_data = df_data.rename(columns={service_col: 'service'})
+    
+    # Melt the dataframe to unpivot
+    df_long = pd.melt(
+        df_data,
+        id_vars=['service'],
+        value_vars=provider_cols,
+        var_name='provider_temp',
+        value_name='value'
+    )
+    
+    # Map the temporary provider names ('Unnamed: 1', 'INCREFF') to clean names
+    # We can infer the provider from the metric row
+    provider_map = {
+        'Unnamed: 1': metrics[1], # The header for the Shiprocket values
+        'INCREFF': 'INCREFF'
+    }
+    df_long['provider'] = df_long['provider_temp'].replace(provider_map)
+    
+    # Data Cleaning
+    df_long['value'] = df_long['value'].astype(str).str.replace(r'[^\d.]', '', regex=True)
     df_long['value'] = pd.to_numeric(df_long['value'], errors='coerce')
-    df_long.dropna(subset=['value'], inplace=True)
+    df_long.dropna(subset=['value', 'service'], inplace=True)
+    df_long = df_long[df_long['service'].str.contains('SCOPE OF WORK') == False] # Remove informational rows
+
+    # Add constant columns
+    df_long['metric'] = 'Price (Per Unit)'
+    df_long['unit'] = 'INR'
     
-    print(f"  - Created DataFrame 'fact_cloud_cost' with {df_long.shape[0]} rows.")
-    return df_long
+    # Final column selection
+    final_df = df_long[['provider', 'service', 'metric', 'value', 'unit']]
+    
+    print(f"  - Created DataFrame 'fact_cloud_cost' with {final_df.shape[0]} rows.")
+    return final_df
