@@ -124,3 +124,32 @@ def create_cloud_cost_df(df: pd.DataFrame) -> pd.DataFrame:
     
     print(f"  - Created DataFrame 'fact_cloud_cost' with {final_df.shape[0]} rows.")
     return final_df
+
+def create_expense_df(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Transforms the poorly structured expense CSV into a clean, long-format DataFrame.
+    """
+    df1 = df.iloc[:, [0, 1]].copy()
+    df1.columns = ['description', 'amount']
+
+    df2 = df.iloc[:, [2, 3]].copy()
+    df2.columns = ['description', 'amount']
+
+    df_combined = pd.concat([df1, df2], ignore_index=True)
+    
+    df_combined['amount'] = df_combined['amount'].astype(str).str.replace(r'[^\d.]', '', regex=True)
+    df_combined['amount'] = pd.to_numeric(df_combined['amount'], errors='coerce')
+    df_combined.dropna(subset=['amount', 'description'], inplace=True)
+    
+    # Add this line to ensure the 'description' column is treated as a string
+    df_combined['description'] = df_combined['description'].astype(str)
+    
+    df_combined = df_combined[~df_combined['description'].str.contains('total', case=False, na=False)]
+    
+    df_combined['date'] = pd.to_datetime('2021-03-31')
+    df_combined['category'] = df_combined['description']
+
+    final_df = df_combined[['date', 'category', 'amount', 'description']]
+    
+    print(f"  - Created DataFrame 'fact_expense' with {final_df.shape[0]} rows.")
+    return final_df
