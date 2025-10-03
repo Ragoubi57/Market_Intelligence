@@ -3,8 +3,8 @@ from supabase import create_client, Client
 from dotenv import load_dotenv
 from etl_pipeline import config
 from etl_pipeline.extract import extract_csv
-from etl_pipeline.transform import unify_raw_data, create_star_schema, create_cloud_cost_df, create_expense_df
-from etl_pipeline.load import load_star_schema,load_linked_fact_table, load_simple_fact_table
+from etl_pipeline.transform import unify_raw_data, create_star_schema, create_cloud_cost_df, create_expense_df, create_pandl_df
+from etl_pipeline.load import load_star_schema, load_fact_table, load_simple_fact_table
 
 def run_sales_etl_pipeline(supabase: Client):
     """Runs the end-to-end ETL pipeline for sales-related data."""
@@ -78,24 +78,65 @@ def run_expense_etl_pipeline(supabase: Client):
         return
 
     print("\n[STEP 3] Loading transformed data into Supabase...")
-    load_linked_fact_table(
+    dimension_links = {
+        "dim_date": {"fk_col": "date_id", "lookup_col": "date"}
+    }
+    load_fact_table(
         supabase=supabase,
-        df=transformed_df,
+        df=transformed_df.drop(columns=['description']),
         table_name="fact_expense",
         pkey_col="expense_id",
-        link_col="date",
-        dim_table="dim_date",
-        dim_key="date_id",
-        dim_link_col="date"
+        dimension_links=dimension_links
     )
     print("\nETL pipeline for expense data completed successfully!")
+
+def run_pandl_etl_pipeline(supabase: Client):
+    """Runs the ETL pipeline for Profit & Loss data."""
+    print("\nStarting ETL Pipeline for P&L Data...")
+    print("\n[STEP 1] Extracting raw P&L data from CSV files...")
+    # Use a dictionary to pass source names to the transformer
+    raw_data = {}
+    pandl_sources = ["pandl_march", "pandl_may"]
+    for source in pandl_sources:
+        try:
+            file_path = config.RAW_DATA_SOURCES[source]
+            raw_data[source] = extract_csv(file_path)
+        except (KeyError, FileNotFoundError):
+            print(f"[WARN] P&L data source '{source}' not found. Skipping.")
+    
+    if not raw_data:
+        print("\nNo P&L data extracted. Halting P&L pipeline.")
+        return
+
+    print("\n[STEP 2] Transforming P&L data...")
+    # Pass the dictionary to the transform function
+    transformed_df = create_pandl_df(raw_data)
+
+    if transformed_df.empty:
+        print("No P&L data transformed. Skipping load.")
+        return
+
+    print("\n[STEP 3] Loading transformed P&L data into Supabase...")
+    # --- CORRECTED: We only link to dim_date, as per the SQL schema ---
+    dimension_links = {
+        "dim_date": {"fk_col": "date_id", "lookup_col": "date"}
+    }
+    load_fact_table(
+        supabase=supabase,
+        df=transformed_df,
+        table_name="fact_pandl",
+        pkey_col="pandl_id",
+        dimension_links=dimension_links
+    )
+    print("\nETL pipeline for P&L data completed successfully!")
+
 
 if __name__ == "__main__":
     load_dotenv()
     url: str = os.getenv("SUPABASE_URL")
     key: str = os.getenv("SUPABASE_KEY")
     supabase: Client = create_client(url, key)
-
-    run_cloud_cost_etl_pipeline(supabase)
-    run_sales_etl_pipeline(supabase)
-    run_expense_etl_pipeline(supabase)
+    #run_expense_etl_pipeline(supabase)
+    run_pandl_etl_pipeline(supabase)
+    #run_cloud_cost_etl_pipeline(supabase)
+    #run_sales_etl_pipeline(supabase)

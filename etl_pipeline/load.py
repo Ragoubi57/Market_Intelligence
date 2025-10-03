@@ -24,64 +24,62 @@ def load_simple_fact_table(supabase: Client, df: pd.DataFrame, table_name: str, 
     else:
         print(f"Load operation to {table_name} reported 0 rows loaded.")
 
-def load_linked_fact_table(supabase: Client, df: pd.DataFrame, table_name: str, pkey_col: str, link_col: str, dim_table: str, dim_key: str, dim_link_col: str):
+def load_fact_table(supabase: Client, df: pd.DataFrame, table_name: str, pkey_col: str, dimension_links: dict):
     """
-    Loads a fact table that has a foreign key link to a single dimension (e.g., dim_date).
+    Loads data into a fact table, linking to multiple dimension tables.
     """
-    print(f"Loading data into linked fact table: {table_name}...")
+    print(f"Loading data into fact table: {table_name}...")
+    df_merged = df.copy()
 
-    # --- NEW LOGIC: Ensure dimension keys exist before loading ---
-    if dim_table == "dim_date":
+    if "dim_date" in dimension_links:
         print("  - Ensuring all dates exist in dim_date...")
-        unique_dates = df[[link_col]].drop_duplicates().copy()
-        unique_dates.rename(columns={link_col: dim_link_col}, inplace=True)
-        unique_dates[dim_link_col] = pd.to_datetime(unique_dates[dim_link_col])
+        date_lookup_col = dimension_links["dim_date"]["lookup_col"]
+        unique_dates = df[[date_lookup_col]].drop_duplicates().copy()
+        unique_dates.rename(columns={date_lookup_col: 'date'}, inplace=True)
+        unique_dates['date'] = pd.to_datetime(unique_dates['date'])
         
-        # Create all the date parts required by the dim_date table
-        unique_dates['year'] = unique_dates[dim_link_col].dt.year
-        unique_dates['month'] = unique_dates[dim_link_col].dt.month
-        unique_dates['day'] = unique_dates[dim_link_col].dt.day
-        unique_dates['quarter'] = unique_dates[dim_link_col].dt.quarter
-        unique_dates[dim_link_col] = unique_dates[dim_link_col].dt.strftime('%Y-%m-%d')
+        unique_dates['year'] = unique_dates['date'].dt.year
+        unique_dates['month'] = unique_dates['date'].dt.month
+        unique_dates['day'] = unique_dates['date'].dt.day
+        unique_dates['quarter'] = unique_dates['date'].dt.quarter
+        unique_dates['date'] = unique_dates['date'].dt.strftime('%Y-%m-%d')
         
-        # Use upsert to add only the new dates, ignoring existing ones
-        supabase.table(dim_table).upsert(
+        supabase.table("dim_date").upsert(
             unique_dates.to_dict(orient="records"), 
-            on_conflict=dim_link_col
+            on_conflict='date'
         ).execute()
-    # --- END NEW LOGIC ---
 
-    dim_df = pd.DataFrame(supabase.table(dim_table).select(f"{dim_key}, {dim_link_col}").execute().data)
+    for dim_table, link_info in dimension_links.items():
+        print(f"  - Fetching keys from dimension: {dim_table}")
+        fk_col, lookup_col = link_info['fk_col'], link_info['lookup_col']
+        dim_df = pd.DataFrame(supabase.table(dim_table).select(f"{fk_col}, {lookup_col}").execute().data)
+        if 'date' in lookup_col:
+            df_merged[lookup_col] = pd.to_datetime(df_merged[lookup_col]).dt.date
+            dim_df[lookup_col] = pd.to_datetime(dim_df[lookup_col]).dt.date
+        df_merged = pd.merge(df_merged, dim_df, on=lookup_col, how="left")
 
-    if 'date' in link_col:
-        df[link_col] = pd.to_datetime(df[link_col]).dt.date
-        dim_df[dim_link_col] = pd.to_datetime(dim_df[dim_link_col]).dt.date
+    fact_table_cols = [link['fk_col'] for link in dimension_links.values()]
+    measure_cols = [col for col in df.columns if col not in [link['lookup_col'] for link in dimension_links.values()]]
+    final_df = df_merged[fact_table_cols + measure_cols].copy()
+    final_df.dropna(subset=fact_table_cols, inplace=True)
 
-    df_merged = pd.merge(df, dim_df, left_on=link_col, right_on=dim_link_col, how="left")
-    
-    df_merged = df_merged.dropna(subset=[dim_key])
-    df_merged[dim_key] = df_merged[dim_key].astype(int)
-    
-    # We must explicitly select the columns for the final table to avoid conflicts
-    final_df_cols = [col for col in df.columns if col != link_col] + [dim_key]
-    final_df = df_merged[final_df_cols]
-    
     if final_df.empty:
-        print("No valid rows to load after linking with dimension.")
+        print("No valid rows to load after linking with dimensions.")
         return
+        
+    for fk_col in fact_table_cols:
+        final_df[fk_col] = final_df[fk_col].astype(int)
 
-    df_to_load = clean_for_json(final_df)
-    
+    print(f"Loading {final_df.shape[0]} rows into {table_name}...")
     supabase.table(table_name).delete().neq(pkey_col, 0).execute()
     
-    response = supabase.table(table_name).insert(
-        df_to_load.to_dict(orient="records")
-    ).execute()
+    BATCH_SIZE = 1000
+    list_of_chunks = np.array_split(final_df, len(final_df) // BATCH_SIZE + 1)
     
-    if len(response.data) > 0:
-        print(f"Successfully loaded {len(response.data)} rows into {table_name}.")
-    else:
-        print(f"Load operation to {table_name} reported 0 rows loaded.")
+    for chunk in filter(lambda c: not c.empty, list_of_chunks):
+        supabase.table(table_name).insert(clean_for_json(chunk).to_dict(orient="records")).execute()
+
+    print(f"Successfully loaded data into {table_name}.")
 
 def load_star_schema(supabase: Client, schema_dfs: dict):
     """Orchestrates the loading of the full star schema into Supabase."""

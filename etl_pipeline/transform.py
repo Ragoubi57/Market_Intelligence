@@ -1,5 +1,7 @@
 import pandas as pd
 from . import config
+import re 
+
 
 def unify_raw_data(raw_dfs: dict) -> pd.DataFrame:
     """
@@ -152,4 +154,68 @@ def create_expense_df(df: pd.DataFrame) -> pd.DataFrame:
     final_df = df_combined[['date', 'category', 'amount', 'description']]
     
     print(f"  - Created DataFrame 'fact_expense' with {final_df.shape[0]} rows.")
+    return final_df
+
+
+def create_pandl_df(raw_data: dict[str, pd.DataFrame]) -> pd.DataFrame:
+    """
+    Combines, cleans, and transforms multiple P&L dataframes into a single,
+    aggregated monthly dataframe. It derives dates from filenames.
+    """
+    print("Combining and transforming P&L data...")
+    monthly_pandl = []
+
+    for source_name, df in raw_data.items():
+        # --- 1. Derive date from the filename (e.g., 'pandl_march', 'pandl_may') ---
+        # We will create a date for the last day of that month.
+        if 'march' in source_name.lower():
+            month_date = pd.to_datetime('2021-03-31')
+        elif 'may' in source_name.lower():
+            month_date = pd.to_datetime('2022-05-31')
+        else:
+            print(f"[WARN] Could not determine date for source '{source_name}'. Skipping.")
+            continue
+        
+        df_copy = df.copy()
+
+        # --- 2. Rename columns based on actual CSV headers ---
+        # Handle variations like 'TP' vs 'TP 1'
+        rename_map = {
+            'Sku': 'sku',
+            'Final MRP Old': 'revenue' # Using 'Final MRP Old' as the revenue source
+        }
+        if 'TP 1' in df_copy.columns:
+            rename_map['TP 1'] = 'cost_of_goods'
+        elif 'TP' in df_copy.columns:
+            rename_map['TP'] = 'cost_of_goods'
+            
+        df_copy.rename(columns=rename_map, inplace=True)
+
+        # --- 3. Clean and convert data types ---
+        if 'revenue' not in df_copy.columns or 'cost_of_goods' not in df_copy.columns:
+            print(f"[WARN] Revenue or Cost columns not found in '{source_name}'. Skipping.")
+            continue
+            
+        df_copy['revenue'] = pd.to_numeric(df_copy['revenue'], errors='coerce')
+        df_copy['cost_of_goods'] = pd.to_numeric(df_copy['cost_of_goods'], errors='coerce')
+        df_copy.dropna(subset=['revenue', 'cost_of_goods'], inplace=True)
+
+        # --- 4. Aggregate the data for the month ---
+        total_revenue = df_copy['revenue'].sum()
+        total_cost = df_copy['cost_of_goods'].sum()
+
+        monthly_pandl.append({
+            'date': month_date,
+            'revenue': total_revenue,
+            'cost_of_goods': total_cost
+        })
+
+    if not monthly_pandl:
+        return pd.DataFrame()
+
+    # --- 5. Create final DataFrame and calculate profit ---
+    final_df = pd.DataFrame(monthly_pandl)
+    final_df['gross_profit'] = final_df['revenue'] - final_df['cost_of_goods']
+    
+    print(f"  - Created aggregated DataFrame 'fact_pandl' with {final_df.shape[0]} rows.")
     return final_df
