@@ -2,7 +2,9 @@ RAW_DATA_SOURCES = {
     "amazon": "Data/Amazon Sale Report.csv",
     "international": "Data/International sale Report.csv",
     "cloud_cost": "Data/Cloud Warehouse Compersion Chart.csv",
-    "expense": "Data/Expense IIGF.csv"
+    "expense": "Data/Expense IIGF.csv",
+    "pandl_march": "Data/P  L March 2021.csv",
+    "pandl_may": "Data/May-2022.csv"
 }
 
 

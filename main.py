@@ -4,8 +4,8 @@ from supabase import create_client, Client
 from dotenv import load_dotenv
 from etl_pipeline import config
 from etl_pipeline.extract import extract_csv
-from etl_pipeline.transform import unify_raw_data, create_star_schema, create_cloud_cost_df, create_expense_df
-from etl_pipeline.load import load_star_schema,load_linked_fact_table, load_simple_fact_table 
+from etl_pipeline.transform import unify_raw_data, create_star_schema, create_cloud_cost_df, create_expense_df, create_pandl_df
+from etl_pipeline.load import load_star_schema, load_fact_table, load_simple_fact_table 
 from etl_pipeline.market_extract import fetch_stock_data, fetch_news_data
 from etl_pipeline.market_transform import transform_market_data
 from etl_pipeline.market_load import load_market_data
@@ -87,34 +87,68 @@ def run_expense_etl_pipeline(supabase: Client):
         return
 
     print("\n[STEP 3] Loading transformed data into Supabase...")
-    load_linked_fact_table(
+    dimension_links = {
+        "dim_date": {"fk_col": "date_id", "lookup_col": "date"}
+    }
+    load_fact_table(
         supabase=supabase,
-        df=transformed_df,
+        df=transformed_df.drop(columns=['description']),
         table_name="fact_expense",
         pkey_col="expense_id",
-        link_col="date",
-        dim_table="dim_date",
-        dim_key="date_id",
-        dim_link_col="date"
+        dimension_links=dimension_links
     )
     print("\nETL pipeline for expense data completed successfully!")
+
+def run_pandl_etl_pipeline(supabase: Client):
+    """Runs the ETL pipeline for Profit & Loss data."""
+    print("\nStarting ETL Pipeline for P&L Data...")
+    print("\n[STEP 1] Extracting raw P&L data from CSV files...")
+    raw_data = {}
+    pandl_sources = ["pandl_march", "pandl_may"]
+    for source in pandl_sources:
+        try:
+            file_path = config.RAW_DATA_SOURCES[source]
+            raw_data[source] = extract_csv(file_path)
+        except (KeyError, FileNotFoundError):
+            print(f"[WARN] P&L data source '{source}' not found. Skipping.")
+    
+    if not raw_data:
+        print("\nNo P&L data extracted. Halting P&L pipeline.")
+        return
+
+    print("\n[STEP 2] Transforming P&L data...")
+    transformed_df = create_pandl_df(raw_data)
+
+    if transformed_df.empty:
+        print("No P&L data transformed. Skipping load.")
+        return
+
+    print("\n[STEP 3] Loading transformed P&L data into Supabase...")
+    dimension_links = {
+        "dim_date": {"fk_col": "date_id", "lookup_col": "date"}
+    }
+    load_fact_table(
+        supabase=supabase,
+        df=transformed_df,
+        table_name="fact_pandl",
+        pkey_col="pandl_id",
+        dimension_links=dimension_links
+    )
+    print("\nETL pipeline for P&L data completed successfully!")
 
 def run_market_data_etl_pipeline(supabase: Client):
     """Orchestrates the ETL pipeline for external market data."""
     print("\n--- Starting ETL Pipeline for External Market Data ---")
 
-    # Set environment variables for PySpark to ensure a stable run on Windows.
     os.environ['PYSPARK_PYTHON'] = sys.executable
     os.environ['PYSPARK_DRIVER_PYTHON'] = sys.executable
 
-    # Initialize the SparkSession.
     spark = SparkSession.builder \
         .appName("MarketIntelligenceSpark") \
         .master("local[*]") \
         .config("spark.driver.host", "127.0.0.1") \
         .getOrCreate()
 
-    # [STEP 1] EXTRACT: Fetch raw data from APIs.
     print("\n[STEP 1] Extracting data from Market APIs...")
     stock_data = fetch_stock_data("AMZN")
     news_data = fetch_news_data("ecommerce OR retail")
@@ -124,7 +158,6 @@ def run_market_data_etl_pipeline(supabase: Client):
         spark.stop()
         return
 
-    # [STEP 2] TRANSFORM: Process raw data with PySpark.
     transformed_stock_df, transformed_news_df = transform_market_data(
         spark=spark,
         supabase=supabase,
@@ -132,12 +165,10 @@ def run_market_data_etl_pipeline(supabase: Client):
         news_data=news_data
     )
 
-    # [STEP 3] LOAD: Insert the transformed data into Supabase.
     print("\n[STEP 3] Loading transformed data into Supabase...")
     load_market_data(supabase, transformed_stock_df, "fact_stock_prices")
     load_market_data(supabase, transformed_news_df, "fact_market_news")
 
-    # Stop the SparkSession to release cluster resources.
     spark.stop()
     print("\n--- Market Data ETL Pipeline Finished ---")
 
@@ -151,5 +182,6 @@ if __name__ == "__main__":
     #run_cloud_cost_etl_pipeline(supabase)
     #run_sales_etl_pipeline(supabase)
     #run_expense_etl_pipeline(supabase)
+    #run_pandl_etl_pipeline(supabase)
 
     run_market_data_etl_pipeline(supabase)
