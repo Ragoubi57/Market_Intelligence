@@ -2,9 +2,6 @@ import os
 import pandas as pd
 import numpy as np
 from supabase import Client
-from dotenv import load_dotenv
-
-load_dotenv()
 
 def clean_for_json(df: pd.DataFrame) -> pd.DataFrame:
     """Cleans a DataFrame to make it JSON serializable."""

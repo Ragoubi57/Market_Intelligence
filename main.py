@@ -1,11 +1,20 @@
 import os
+import sys 
 from supabase import create_client, Client
 from dotenv import load_dotenv
 from etl_pipeline import config
 from etl_pipeline.extract import extract_csv
 from etl_pipeline.transform import unify_raw_data, create_star_schema, create_cloud_cost_df, create_expense_df
-from etl_pipeline.load import load_star_schema,load_linked_fact_table, load_simple_fact_table
+from etl_pipeline.load import load_star_schema,load_linked_fact_table, load_simple_fact_table 
+from etl_pipeline.market_extract import fetch_stock_data, fetch_news_data
+from etl_pipeline.market_transform import transform_market_data
+from etl_pipeline.market_load import load_market_data
+from pyspark.sql import SparkSession
 
+load_dotenv()
+
+ALPHA_VANTAGE_API_KEY=os.getenv("ALPHA_VANTAGE_API_KEY")
+NEWS_API_KEY=os.getenv("NEWS_API_KEY")
 def run_sales_etl_pipeline(supabase: Client):
     """Runs the end-to-end ETL pipeline for sales-related data."""
     print("\nStarting Market Intelligence ETL Pipeline for Sales Data...")
@@ -90,12 +99,57 @@ def run_expense_etl_pipeline(supabase: Client):
     )
     print("\nETL pipeline for expense data completed successfully!")
 
+def run_market_data_etl_pipeline(supabase: Client):
+    """Orchestrates the ETL pipeline for external market data."""
+    print("\n--- Starting ETL Pipeline for External Market Data ---")
+
+    # Set environment variables for PySpark to ensure a stable run on Windows.
+    os.environ['PYSPARK_PYTHON'] = sys.executable
+    os.environ['PYSPARK_DRIVER_PYTHON'] = sys.executable
+
+    # Initialize the SparkSession.
+    spark = SparkSession.builder \
+        .appName("MarketIntelligenceSpark") \
+        .master("local[*]") \
+        .config("spark.driver.host", "127.0.0.1") \
+        .getOrCreate()
+
+    # [STEP 1] EXTRACT: Fetch raw data from APIs.
+    print("\n[STEP 1] Extracting data from Market APIs...")
+    stock_data = fetch_stock_data("AMZN")
+    news_data = fetch_news_data("ecommerce OR retail")
+
+    if not stock_data and not news_data:
+        print("\nNo market data was extracted. Halting pipeline.")
+        spark.stop()
+        return
+
+    # [STEP 2] TRANSFORM: Process raw data with PySpark.
+    transformed_stock_df, transformed_news_df = transform_market_data(
+        spark=spark,
+        supabase=supabase,
+        stock_data=stock_data,
+        news_data=news_data
+    )
+
+    # [STEP 3] LOAD: Insert the transformed data into Supabase.
+    print("\n[STEP 3] Loading transformed data into Supabase...")
+    load_market_data(supabase, transformed_stock_df, "fact_stock_prices")
+    load_market_data(supabase, transformed_news_df, "fact_market_news")
+
+    # Stop the SparkSession to release cluster resources.
+    spark.stop()
+    print("\n--- Market Data ETL Pipeline Finished ---")
+
+
 if __name__ == "__main__":
     load_dotenv()
     url: str = os.getenv("SUPABASE_URL")
     key: str = os.getenv("SUPABASE_KEY")
     supabase: Client = create_client(url, key)
 
-    run_cloud_cost_etl_pipeline(supabase)
-    run_sales_etl_pipeline(supabase)
-    run_expense_etl_pipeline(supabase)
+    #run_cloud_cost_etl_pipeline(supabase)
+    #run_sales_etl_pipeline(supabase)
+    #run_expense_etl_pipeline(supabase)
+
+    run_market_data_etl_pipeline(supabase)
