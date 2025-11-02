@@ -1,22 +1,33 @@
-# E-Commerce ETL & Analytics Pipeline
+# Market Intelligence Platform
 
-This project is a comprehensive, scalable ETL (Extract, Transform, Load) pipeline built with Python. It is designed to process a public e-commerce sales dataset, transform it into a clean analytical format, and load it into a cloud database for business intelligence and data science applications.
+A comprehensive data engineering and analytics platform that integrates multiple data sources (e-commerce sales, market data, news) into a unified data warehouse, powered by ETL pipelines, sentiment analysis, and ready for AI-driven insights.
 
-## Key Features
+## 🎯 Project Vision
 
-- **Modular ETL Architecture:** The pipeline is cleanly separated into Extract, Transform, and Load modules for maintainability and scalability.
-- **Configuration-Driven:** New data sources can be added by simply updating a configuration file, requiring no changes to the core pipeline logic.
-- **Cloud Database Backend:** Utilizes **Supabase** (PostgreSQL) for robust, scalable, and accessible data storage, leveraging its generous free tier.
-- **Analytical Data Modeling:** Transforms raw, flat data into a powerful **Star Schema**, the industry standard for efficient data warehousing and analytics.
-- **Automated & Robust:** The pipeline is designed to be run from a single command, with built-in data cleaning, error handling, and dependency management.
+Build a unified data warehouse that can power analytics, AI-driven forecasting models, and an interactive business intelligence dashboard by combining:
+- E-commerce sales data
+- Real-time stock market data
+- News sentiment analysis
+- Financial metrics (P&L, expenses, cloud costs)
 
-## Tech Stack
+## ✨ Key Features
 
-- **Language:** Python 3.11+
-- **Data Manipulation:** Pandas
+- **Multi-Source ETL Pipelines:** Modular architecture for CSV files and external APIs
+- **PySpark Integration:** Scalable data processing framework ready for big data
+- **Sentiment Analysis:** Real-time news analysis using TextBlob (ready for FinBERT)
+- **Star Schema Design:** Optimized analytical data warehouse in Supabase (PostgreSQL)
+- **API Integration:** Alpha Vantage (stocks) and NewsAPI (market news)
+- **Cloud Database:** Supabase with proper foreign key relationships
+
+## 🛠️ Tech Stack
+
+- **Language:** Python 3.10
+- **Data Processing:** Pandas, PySpark
+- **AI/ML:** TextBlob (sentiment), ready for Transformers
 - **Database:** Supabase (PostgreSQL)
+- **APIs:** Alpha Vantage, NewsAPI
 - **Environment:** Conda
-- **Infrastructure:** `dotenv` for environment management
+- **Infrastructure:** dotenv, requests
 
 ## Dataset
 
@@ -76,8 +87,95 @@ The ETL process flows in three distinct stages:
     python main.py
     ```
 
-## Future Goals (Roadmap)
+## 📊 Current Status
 
-- [ ] **Phase 2: Big Data & APIs:** Integrate **PySpark** for large-scale transformations and connect to a **News API** for real-time market data.
-- [ ] **Phase 3: AI & Data Science:** Implement **Transformer models** to generate embeddings from text data, storing them in Supabase with `pgvector` for semantic search and sentiment analysis.
-- [ ] **Phase 4: Visualization:** Build an interactive dashboard with **Streamlit** to visualize sales trends and market insights.
+### ✅ Phase 1: Data Foundation - **COMPLETE**
+- [x] Sales ETL pipeline (Amazon, International)
+- [x] Expense tracking pipeline
+- [x] Cloud cost monitoring pipeline
+- [x] P&L (Profit & Loss) pipeline
+- [x] **Market data pipeline** (Stock prices + News sentiment)
+- [x] Star schema in Supabase with 330+ dates
+- [x] 100 stock price records (AMZN)
+- [x] 98 news articles with sentiment scores
+
+See [PHASE1_COMPLETE.md](PHASE1_COMPLETE.md) for detailed accomplishments.
+
+### 🚧 Phase 2: Intelligence Layer - **NEXT**
+- [ ] Jupyter Notebooks for EDA
+- [ ] FinBERT for financial sentiment
+- [ ] Time series forecasting (Prophet, LSTM)
+- [ ] Correlation analysis between news sentiment and stock prices
+
+### 📅 Phase 3: Delivery Layer - **PLANNED**
+- [ ] Streamlit dashboard
+- [ ] FastAPI backend
+- [ ] Real-time data updates
+- [ ] Predictive analytics visualization
+
+## 🗂️ Database Schema
+
+### Dimension Tables
+- `dim_date` - Calendar dimension (330 records)
+- `dim_product` - Product catalog
+- `dim_region` - Geographic regions
+- `dim_channel` - Sales channels
+
+### Fact Tables
+- `fact_sales` - E-commerce transactions
+- `fact_expense` - Business expenses
+- `fact_cloud_cost` - Cloud infrastructure costs
+- `fact_pandl` - Profit & Loss statements
+- `fact_stock_prices` - Stock market OHLCV data ✨
+- `fact_market_news` - News with sentiment analysis ✨
+
+## 🚀 Quick Start
+
+### Prerequisites
+```bash
+# Install Conda
+# Create environment
+conda create -n market310 python=3.10
+conda activate market310
+pip install pandas numpy pyspark textblob supabase python-dotenv requests
+```
+
+### Configuration
+Create `.env` file in project root:
+```env
+SUPABASE_URL=your_supabase_url
+SUPABASE_KEY=your_supabase_key
+ALPHA_VANTAGE_API_KEY=your_alpha_vantage_key
+NEWS_API_KEY=your_news_api_key
+```
+
+### Run Pipeline
+```bash
+# Activate environment
+conda activate market310
+
+# Run market data pipeline
+python main.py
+
+# Verify loaded data
+python verify_data.py
+```
+
+## 📁 Project Structure
+
+```
+Market_Intelligence/
+├── main.py                      # Pipeline orchestrator
+├── etl_pipeline/
+│   ├── config.py               # Data source configuration
+│   ├── extract.py              # CSV extraction
+│   ├── transform.py            # Data transformations
+│   ├── load.py                 # Database operations
+│   ├── market_extract.py       # API data fetching
+│   ├── market_transform.py     # Market data processing
+│   └── market_load.py          # Market data loading
+├── Data/                        # CSV data files
+├── verify_data.py              # Data verification
+├── PHASE1_COMPLETE.md          # Phase 1 summary
+└── README.md                   # This file
+```
