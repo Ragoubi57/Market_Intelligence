@@ -1,158 +1,160 @@
 # Market Intelligence Platform
 
-Data engineering platform integrating e-commerce sales, stock market data, and news sentiment analysis into a unified data warehouse. Built with PySpark for distributed processing and designed for scalability.
+Data engineering platform integrating e-commerce sales, market data, and news sentiment into a unified data warehouse. Built with PySpark, implements ETL pipelines, sentiment analysis, and star schema design for analytics and forecasting.
 
 ## Overview
 
-This platform demonstrates end-to-end data engineering capabilities:
-- ETL pipelines for multiple data sources (CSV files and external APIs)
-- Star schema data warehouse design in PostgreSQL
-- Distributed data processing with PySpark
-- Real-time sentiment analysis on financial news
-- Automated incremental data loading
+This platform combines historical e-commerce data with real-time market intelligence to enable comprehensive business analytics. The system extracts data from multiple sources, applies transformations including sentiment analysis, and loads into a cloud data warehouse following dimensional modeling best practices.
 
-## Architecture
-
-The system follows a modular ETL architecture with three main components:
-
-**Extract Layer**
-- CSV data ingestion for e-commerce transactions
-- API integration for real-time market data (Alpha Vantage, NewsAPI)
-- Error handling and data validation
-
-**Transform Layer**
-- Data normalization and schema mapping
-- Star schema transformation (fact and dimension tables)
-- Sentiment analysis using TextBlob
-- Date synchronization across data sources
-
-**Load Layer**
-- Batch loading with upsert operations
-- Foreign key relationship management
-- Incremental updates to avoid full refreshes
+**Key Capabilities:**
+- Multi-source ETL pipelines (CSV files, REST APIs)
+- Distributed processing with PySpark
+- Real-time news sentiment analysis
+- Star schema data warehouse
+- Scalable cloud architecture
 
 ## Tech Stack
 
-**Core Technologies:**
+**Core:**
 - Python 3.10
 - PySpark (distributed processing)
 - Pandas (data manipulation)
-- PostgreSQL via Supabase
+- PostgreSQL (Supabase)
 
-**APIs:**
+**APIs & Integration:**
 - Alpha Vantage (stock market data)
-- NewsAPI (financial news)
+- NewsAPI (news articles)
+- Supabase client (database operations)
 
-**Infrastructure:**
-- Conda environment management
-- python-dotenv for configuration
+**ML/Analytics:**
+- TextBlob (sentiment analysis)
+- NumPy (numerical operations)
 
-## Data Sources
+## Architecture
 
-**Public Datasets:**
-- E-Commerce Sales Dataset from Kaggle (https://www.kaggle.com/datasets/aniltomar/e-commerce-sales-dataset)
-- Attribution: ANil
+### Data Sources
+- **E-Commerce Sales:** Kaggle public dataset ([source](https://www.kaggle.com/datasets/aniltomar/e-commerce-sales-dataset))
+- **Stock Market:** Alpha Vantage API (OHLCV data)
+- **News Articles:** NewsAPI (business news with sentiment)
+- **Financial Metrics:** CSV files (P&L, expenses, cloud costs)
 
-**Real-time APIs:**
-- Alpha Vantage for stock market OHLCV data
-- NewsAPI for financial news articles
+### ETL Pipeline
 
-## Database Schema
+**Extract:**
+- CSV file parsing with Pandas
+- REST API calls with error handling and rate limiting
+- Concurrent data fetching for multiple sources
 
-**Dimension Tables:**
-- dim_date: Calendar dimension with year, month, quarter
-- dim_product: Product catalog with SKU, category
-- dim_region: Geographic regions and currency
-- dim_channel: Sales channels
+**Transform:**
+- Data standardization and cleaning
+- Star schema generation (dimension and fact tables)
+- Sentiment analysis on news text
+- Date synchronization across sources
+- PySpark for distributed transformations
 
-**Fact Tables:**
-- fact_sales: E-commerce transactions (940K+ records)
-- fact_expense: Business expenses
-- fact_cloud_cost: Infrastructure costs
-- fact_pandl: Profit and loss statements
-- fact_stock_prices: Stock market OHLCV data
-- fact_market_news: News articles with sentiment scores
+**Load:**
+- Batch inserts with configurable chunk size
+- Upsert operations for dimension tables
+- Foreign key relationship management
+- Data validation and type conversion
 
 ## Setup
 
-**Prerequisites:**
-- Anaconda or Miniconda
+### Prerequisites
 - Python 3.10
-- PostgreSQL database (Supabase account)
+- Conda
+- Supabase account
+- API keys (Alpha Vantage, NewsAPI)
 
-**Environment Setup:**
+### Installation
+
+1. Clone repository:
+```bash
+git clone https://github.com/Ragoubi57/Market_Intelligence.git
+cd Market_Intelligence
+```
+
+2. Create environment:
 ```bash
 conda create -n market310 python=3.10
 conda activate market310
 pip install pandas numpy pyspark textblob supabase python-dotenv requests
 ```
 
-**Configuration:**
+3. Download data:
+- Get Kaggle dataset from [here](https://www.kaggle.com/datasets/aniltomar/e-commerce-sales-dataset)
+- Place CSV files in `Data/` directory
 
-Create `.env` file in project root:
+4. Configure environment:
+Create `.env` file:
 ```
 SUPABASE_URL=your_supabase_url
-SUPABASE_KEY=your_supabase_service_role_key
-ALPHA_VANTAGE_API_KEY=your_api_key
-NEWS_API_KEY=your_api_key
+SUPABASE_KEY=your_supabase_key
+ALPHA_VANTAGE_API_KEY=your_alpha_vantage_key
+NEWS_API_KEY=your_news_api_key
 ```
 
-**Data Setup:**
-1. Download Kaggle dataset and place CSV files in `Data/` directory
-2. Ensure filenames match those in `etl_pipeline/config.py`
+### Usage
 
-## Usage
-
-**Run specific pipeline:**
+Run ETL pipeline:
 ```bash
-# Sales data
-python main.py  # Uncomment run_sales_etl_pipeline()
-
-# Market data (stocks + news)
-python main.py  # Uncomment run_market_data_etl_pipeline()
+conda activate market310
+python main.py
 ```
 
-**Verify loaded data:**
+Verify data:
 ```bash
 python verify_data.py
 ```
+
+## Database Schema
+
+### Dimension Tables
+- `dim_date` - Calendar dimension with year, month, day, quarter
+- `dim_product` - Product catalog with SKU, name, category
+- `dim_region` - Geographic regions with country, currency
+- `dim_channel` - Sales channels (Amazon, International)
+
+### Fact Tables
+- `fact_sales` - E-commerce transactions (940K+ records)
+- `fact_expense` - Business expenses linked to dates
+- `fact_cloud_cost` - Cloud infrastructure costs
+- `fact_pandl` - Profit & Loss statements
+- `fact_stock_prices` - Stock market OHLCV data
+- `fact_market_news` - News articles with sentiment scores
+
+All fact tables link to dimensions via foreign keys. Auto-generated primary keys use identity columns.
 
 ## Project Structure
 
 ```
 Market_Intelligence/
 ├── main.py                      # Pipeline orchestrator
+├── verify_data.py               # Data validation
 ├── etl_pipeline/
-│   ├── config.py               # Data source paths and mappings
-│   ├── extract.py              # CSV data extraction
-│   ├── transform.py            # Data transformations and star schema
-│   ├── load.py                 # Database loading operations
-│   ├── market_extract.py       # API data fetching
-│   ├── market_transform.py     # Market data processing with PySpark
-│   └── market_load.py          # Market data loading
-├── Data/                        # CSV files (Kaggle dataset)
-└── verify_data.py              # Data validation script
+│   ├── config.py                # Source configuration
+│   ├── extract.py               # CSV extraction
+│   ├── transform.py             # Data transformations
+│   ├── load.py                  # Database loading
+│   ├── market_extract.py        # API fetching
+│   ├── market_transform.py      # Market data processing
+│   └── market_load.py           # Market data loading
+└── Data/                        # CSV files
 ```
 
-## Current Implementation
+## Current Status
 
-**Completed Features:**
-- Multi-source ETL pipelines (CSV and API)
-- Star schema data warehouse with proper foreign keys
-- Sentiment analysis on financial news (TextBlob)
-- PySpark integration for distributed processing
-- Incremental date synchronization
-- Batch loading optimization
+**Implemented:**
+- Sales ETL pipeline (CSV-based)
+- Financial metrics pipelines (expenses, P&L, cloud costs)
+- Market data pipeline (stocks + news)
+- Sentiment analysis (TextBlob)
+- Star schema with 330+ dates, 940K+ sales records
+- 100 stock prices, 98 news articles
 
-**Data Loaded:**
-- 940K+ e-commerce sales transactions
-- 100 stock price records (AMZN)
-- 98 news articles with sentiment analysis
-- 330 date dimension records
-
-**Planned Enhancements:**
-- Multi-stock symbol support
-- Advanced sentiment analysis (FinBERT)
+**Planned:**
+- Multi-symbol stock support
+- Advanced sentiment (FinBERT)
 - Time series forecasting
-- Interactive dashboard (Streamlit)
-- Real-time data updates
+- Interactive dashboard
+- Real-time updates
