@@ -2,6 +2,7 @@
 
 import os
 import requests
+from concurrent.futures import ThreadPoolExecutor
 
 def fetch_stock_data(symbol: str) -> list[dict]:
     """Fetches daily time series data for a given stock symbol."""
@@ -38,6 +39,20 @@ def fetch_stock_data(symbol: str) -> list[dict]:
     except requests.exceptions.RequestException as e:
         print(f"    [ERROR] Request failed for {symbol}: {e}")
         return []
+
+def fetch_multiple_stocks(symbols: list[str]) -> list[dict]:
+    """Fetches stock data for multiple symbols concurrently."""
+    print(f"  - Starting concurrent fetch for {len(symbols)} symbols...")
+    all_data = []
+    
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = executor.map(fetch_stock_data, symbols)
+    
+    for result in results:
+        all_data.extend(result)
+    
+    print(f"  - Total records fetched: {len(all_data)}")
+    return all_data
 
 def fetch_news_data(query: str) -> list[dict]:
     """Fetches news articles for a given query."""

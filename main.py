@@ -6,7 +6,7 @@ from etl_pipeline import config
 from etl_pipeline.extract import extract_csv
 from etl_pipeline.transform import unify_raw_data, create_star_schema, create_cloud_cost_df, create_expense_df, create_pandl_df
 from etl_pipeline.load import load_star_schema, load_fact_table, load_simple_fact_table 
-from etl_pipeline.market_extract import fetch_stock_data, fetch_news_data
+from etl_pipeline.market_extract import fetch_multiple_stocks, fetch_news_data
 from etl_pipeline.market_transform import transform_market_data
 from etl_pipeline.market_load import load_market_data
 from pyspark.sql import SparkSession
@@ -150,8 +150,9 @@ def run_market_data_etl_pipeline(supabase: Client):
         .getOrCreate()
 
     print("\n[STEP 1] Extracting data from Market APIs...")
-    stock_data = fetch_stock_data("AMZN")
-    news_data = fetch_news_data("ecommerce OR retail")
+    symbols = ["AMZN", "MSFT", "GOOGL", "AAPL", "TSLA"]
+    stock_data = fetch_multiple_stocks(symbols)
+    news_data = fetch_news_data("technology OR stocks OR market")
 
     if not stock_data and not news_data:
         print("\nNo market data was extracted. Halting pipeline.")
