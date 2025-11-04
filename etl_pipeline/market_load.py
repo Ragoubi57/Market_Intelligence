@@ -45,6 +45,21 @@ def load_market_data(supabase: Client, df: pd.DataFrame, table_name: str):
         # Ensure the chunk is not empty before trying to insert.
         if not chunk.empty:
             print(f"    - Loading batch {i+1} of {len(list_of_chunks)}...")
-            supabase.table(table_name).insert(chunk.to_dict(orient="records")).execute()
+            try:
+                supabase.table(table_name).insert(chunk.to_dict(orient="records")).execute()
+            except Exception as e:
+                print(f"    [WARN] Batch {i+1} failed: {e}. Retrying...")
+                try:
+                    # Retry once with smaller chunks
+                    mid = len(chunk) // 2
+                    chunk1 = chunk.iloc[:mid]
+                    chunk2 = chunk.iloc[mid:]
+                    if not chunk1.empty:
+                        supabase.table(table_name).insert(chunk1.to_dict(orient="records")).execute()
+                    if not chunk2.empty:
+                        supabase.table(table_name).insert(chunk2.to_dict(orient="records")).execute()
+                    print(f"    - Retry successful for batch {i+1}")
+                except Exception as retry_error:
+                    print(f"    [ERROR] Batch {i+1} failed after retry: {retry_error}")
 
     print(f"  - Successfully loaded data into '{table_name}'.")

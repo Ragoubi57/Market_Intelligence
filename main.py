@@ -6,7 +6,7 @@ from etl_pipeline import config
 from etl_pipeline.extract import extract_csv
 from etl_pipeline.transform import unify_raw_data, create_star_schema, create_cloud_cost_df, create_expense_df, create_pandl_df
 from etl_pipeline.load import load_star_schema, load_fact_table, load_simple_fact_table 
-from etl_pipeline.market_extract import fetch_multiple_stocks, fetch_news_data
+from etl_pipeline.market_extract import fetch_multiple_stocks, fetch_news_for_symbols
 from etl_pipeline.market_transform import transform_market_data
 from etl_pipeline.market_load import load_market_data
 from pyspark.sql import SparkSession
@@ -136,8 +136,8 @@ def run_pandl_etl_pipeline(supabase: Client):
     )
     print("\nETL pipeline for P&L data completed successfully!")
 
-def run_market_data_etl_pipeline(supabase: Client):
-    """Orchestrates the ETL pipeline for external market data."""
+def run_market_data_etl_pipeline(supabase: Client, outputsize: str = "compact"):
+    """Orchestrates the ETL pipeline for external market data with adjustable output size."""
     print("\n--- Starting ETL Pipeline for External Market Data ---")
 
     os.environ['PYSPARK_PYTHON'] = sys.executable
@@ -151,8 +151,13 @@ def run_market_data_etl_pipeline(supabase: Client):
 
     print("\n[STEP 1] Extracting data from Market APIs...")
     symbols = ["AMZN", "MSFT", "GOOGL", "AAPL", "TSLA"]
-    stock_data = fetch_multiple_stocks(symbols)
-    news_data = fetch_news_data("technology OR stocks OR market")
+    stock_data = fetch_multiple_stocks(symbols, outputsize=outputsize)
+    
+    # Fetch news from the past 30 days with symbol-specific queries
+    from datetime import datetime, timedelta
+    to_date = datetime.now().strftime("%Y-%m-%d")
+    from_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+    news_data = fetch_news_for_symbols(symbols, from_date=from_date, to_date=to_date)
 
     if not stock_data and not news_data:
         print("\nNo market data was extracted. Halting pipeline.")
@@ -173,7 +178,6 @@ def run_market_data_etl_pipeline(supabase: Client):
     spark.stop()
     print("\n--- Market Data ETL Pipeline Finished ---")
 
-
 if __name__ == "__main__":
     load_dotenv()
     url: str = os.getenv("SUPABASE_URL")
@@ -185,4 +189,5 @@ if __name__ == "__main__":
     #run_expense_etl_pipeline(supabase)
     #run_pandl_etl_pipeline(supabase)
 
-    run_market_data_etl_pipeline(supabase)
+    # Example: Run with "full" outputsize to fetch all available stock data
+    run_market_data_etl_pipeline(supabase, outputsize="full")

@@ -6,6 +6,7 @@ from pyspark.sql.types import FloatType
 from textblob import TextBlob
 import pandas as pd
 from supabase import Client
+from etl_pipeline.sentiment_transformer import sentiment_transformer
 
 def _calculate_sentiment(text: str) -> float:
     """Calculates the sentiment polarity of a text string."""
@@ -44,19 +45,44 @@ def transform_market_data(
         print(f"  - Ensured {len(all_dates)} dates exist in dim_date.")
     
     print("  - Fetching refreshed dim_date from Supabase.")
-    dim_date_pd = pd.DataFrame(supabase.table("dim_date").select("date_id, date").execute().data)
+    # Fetch all date records (no limit)
+    all_dates_response = []
+    page_size = 1000
+    offset = 0
+    while True:
+        batch = supabase.table("dim_date").select("date_id, date").range(offset, offset + page_size - 1).execute().data
+        if not batch:
+            break
+        all_dates_response.extend(batch)
+        if len(batch) < page_size:
+            break
+        offset += page_size
+    
+    dim_date_pd = pd.DataFrame(all_dates_response)
     dim_date_pd['date'] = pd.to_datetime(dim_date_pd['date']).dt.date
     print(f"  - Loaded {len(dim_date_pd)} date records.")
 
     final_news_df = pd.DataFrame()
     if news_data:
         print("  - Processing news data with Pandas...")
+        
+        # Sentiment analysis for news articles using FinBERT
+        print("  - Performing sentiment analysis on news articles with FinBERT...")
+        news_texts = [article.get("title", "") for article in news_data]
+        sentiment_results = sentiment_transformer(news_texts)
+
+        for i, result in enumerate(sentiment_results):
+            news_data[i]["sentiment_label"] = result["label"]
+            news_data[i]["sentiment_score"] = result["polarity"]
+        
+        print(f"  - FinBERT sentiment analysis complete for {len(sentiment_results)} articles.")
+        
         news_pd = pd.DataFrame(news_data)
         news_pd['date'] = pd.to_datetime(news_pd['published_at']).dt.date
-        news_pd['sentiment_score'] = news_pd['title'].apply(_calculate_sentiment)
         
         news_merged = news_pd.merge(dim_date_pd, on='date', how='inner')
-        final_news_df = news_merged[['date_id', 'source_name', 'title', 'sentiment_score']]
+        # Include additional fields: description, content, url
+        final_news_df = news_merged[['date_id', 'source_name', 'title', 'description', 'content', 'url', 'sentiment_score']]
         print(f"  - News transformation complete. {len(final_news_df)} articles linked.")
 
     final_stock_df = pd.DataFrame()
